@@ -1,0 +1,404 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>E-Notice Board</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: LCD module on a PCB up top, then a notice editor, then the full Arduino sketch generated from the editor. */
+:root{
+  --bg:#eef1ee; --panel:#ffffff; --fg:#14201a; --muted:#56665d; --line:#cfd8d1;
+  --pcb:#1f5b3c; --pcb-edge:#143d28; --lcd:#2a62c9; --lcd-dim:#2656b4; --lcd-ink:#f3f7ff;
+  --accent:#1f7a4d; --accent-fg:#ffffff; --warn:#9a5b00;
+  --f-display:'DotGothic16','IBM Plex Mono',monospace; --f-body:'IBM Plex Sans',system-ui,sans-serif; --f-mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1512; --panel:#18211c; --fg:#e6efe9; --muted:#93a49a; --line:#2a372f;
+  --pcb:#18482f; --pcb-edge:#0d2a1b; --accent:#52c28a; --accent-fg:#06160d; --warn:#e0a54a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1512; --panel:#18211c; --fg:#e6efe9; --muted:#93a49a; --line:#2a372f;
+  --pcb:#18482f; --pcb-edge:#0d2a1b; --accent:#52c28a; --accent-fg:#06160d; --warn:#e0a54a; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.5;
+  padding-block:28px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:780px;margin:0 auto;display:grid;gap:22px}
+h1{font-family:var(--f-display);font-weight:400;font-size:clamp(26px,5vw,34px);margin:0;letter-spacing:.04em;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0;max-width:62ch}
+.board{background:var(--pcb);border:2px solid var(--pcb-edge);border-radius:10px;padding:16px 16px 12px;position:relative;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.hole{position:absolute;width:12px;height:12px;border-radius:50%;background:var(--bg);border:2px solid #c8b26a}
+.h1{left:10px;top:10px}.h2{right:10px;top:10px}.h3{left:10px;bottom:10px}.h4{right:10px;bottom:10px}
+.bezel{background:#0c0f0d;border-radius:6px;padding:14px;margin:18px 14px}
+.lcd{background:var(--lcd);border-radius:3px;padding:12px 10px;display:grid;gap:7px;box-shadow:inset 0 0 28px rgba(0,0,40,.45),0 0 40px rgba(42,98,201,.35)}
+.row{display:grid;grid-template-columns:repeat(16,1fr);gap:3px;min-width:0}
+.c{position:relative;aspect-ratio:5/8;background:var(--lcd-dim);border-radius:2px;display:grid;place-items:center;
+  font-family:var(--f-display);color:var(--lcd-ink);font-size:clamp(11px,3.7vw,27px);line-height:1;
+  text-shadow:0 0 6px rgba(255,255,255,.4);overflow:hidden}
+.c.full{background:var(--lcd-ink)}
+.c::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(to right,rgba(0,10,50,.38) 1px,transparent 1px),linear-gradient(to bottom,rgba(0,10,50,.38) 1px,transparent 1px);
+  background-size:20% 100%,100% 12.5%}
+.pins{display:flex;justify-content:space-between;gap:8px;font-family:var(--f-mono);font-size:11px;color:#d7e6dc;padding:0 6px;letter-spacing:.06em}
+.pins span{background:rgba(0,0,0,.25);padding:2px 7px;border-radius:3px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;display:grid;gap:16px;min-width:0}
+.ctrls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+button,select{font:inherit;font-weight:500;border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:8px 14px;border-radius:6px;cursor:pointer}
+select{font-weight:400;padding:8px 8px}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.speed{display:flex;align-items:center;gap:10px;margin-left:auto;color:var(--muted);font-size:13px}
+.speed input{width:130px;accent-color:var(--accent)}
+.st{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.nowplaying{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:600}
+.head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.list{display:grid;gap:12px}
+.item{display:grid;gap:6px}
+.line{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.line input[type=text]{flex:1 1 220px;min-width:0}
+input[type=text]{font-family:var(--f-mono);font-size:14px;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+.hint{font-size:12px;color:var(--warn);margin:0}
+.opts{display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:13px}
+.item.active input[type=text]{border-color:var(--accent)}
+pre{margin:0;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:12px;overflow:auto;max-height:380px;font-family:var(--f-mono);font-size:12.5px;line-height:1.55}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+
+<main>
+  <header>
+    <h1>E-NOTICE BOARD</h1>
+    <p class="sub">A 16x2 I2C LCD at address 0x27. Each notice plays with its own effect, a wipe clears the row, and the next one starts. Edit the list below and the sketch at the bottom rewrites itself.</p>
+  </header>
+
+  <section class="board" aria-label="Simulated LCD module">
+    <i class="hole h1"></i><i class="hole h2"></i><i class="hole h3"></i><i class="hole h4"></i>
+    <div class="bezel"><div class="lcd" id="lcd" role="img" aria-label="LCD display"></div></div>
+    <div class="pins"><span>GND</span><span>VCC</span><span>SDA</span><span>SCL</span></div>
+  </section>
+
+  <section class="panel">
+    <div class="ctrls">
+      <button class="primary" id="pause">Pause</button>
+      <button id="restart">Restart from boot</button>
+      <span class="nowplaying" id="now">booting</span>
+      <div class="speed"><span>Speed</span><input type="range" id="speed" min="0.5" max="4" step="0.5" value="1" aria-label="Speed"><span id="speedv" class="st">1x</span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="head"><h2>Notices</h2><button id="add">Add notice</button></div>
+    <div class="list" id="list"></div>
+    <div class="opts"><label for="footer">Bottom row</label>
+      <select id="footer"><option value="label">Digital Notices</option><option value="counter">Notice 1/5 counter</option></select></div>
+  </section>
+
+  <section class="panel">
+    <div class="head"><h2>Arduino sketch</h2><button id="copy">Copy sketch</button></div>
+    <pre id="code"></pre>
+  </section>
+</main>
+
+<script>
+(function(){
+  var COLS=16, ROWS=2, BLOCK='█', cells=[], buf=[[],[]], cur={r:0,c:0};
+  var lcdEl=document.getElementById('lcd');
+  for(var r=0;r<ROWS;r++){
+    var row=document.createElement('div'); row.className='row';
+    for(var c=0;c<COLS;c++){var d=document.createElement('div');d.className='c';row.appendChild(d);cells.push(d);buf[r][c]=' ';}
+    lcdEl.appendChild(row);
+  }
+  function draw(){for(var r=0;r<ROWS;r++)for(var c=0;c<COLS;c++){
+    var el=cells[r*COLS+c],ch=buf[r][c],full=ch===BLOCK;
+    el.classList.toggle('full',full);
+    var t=(full||ch===' ')?'':ch; if(el.textContent!==t)el.textContent=t;}}
+  var lcd={
+    clear:function(){for(var r=0;r<ROWS;r++)for(var c=0;c<COLS;c++)buf[r][c]=' ';cur={r:0,c:0};draw();},
+    setCursor:function(c,r){cur={r:r,c:c};},
+    print:function(s){s=String(s);for(var i=0;i<s.length;i++){if(cur.c<COLS)buf[cur.r][cur.c]=s[i];cur.c++;}draw();}
+  };
+  function clearRow(r){lcd.setCursor(0,r);lcd.print('                ');}
+
+  var EFFECTS=[['SCROLL','Scroll'],['TYPE','Typewriter'],['BLINK','Blink'],['SLIDE','Slide in'],['BOUNCE','Bounce']];
+  var notices=[
+    {text:'WELCOME TO OUR COLLEGE',effect:'SCROLL'},
+    {text:'EXAM STARTS MONDAY',effect:'SLIDE'},
+    {text:'LIBRARY 9AM-5PM',effect:'TYPE'},
+    {text:'HOLIDAY FRIDAY',effect:'BLINK'},
+    {text:'NEW BATCH 2026',effect:'BOUNCE'}
+  ];
+  var footerMode='label', playing=-1;
+
+  /* ---- timing ---- */
+  var speed=1, paused=false, runId=0;
+  function wait(ms,id){return new Promise(function(res,rej){
+    var left=ms;(function tick(){
+      if(id!==runId)return rej('stop');
+      if(paused){setTimeout(tick,60);return;}
+      if(left<=0)return res();
+      var step=Math.min(left,20);left-=step;setTimeout(tick,step/speed);
+    })();
+  });}
+
+  /* ---- effects (mirror the Arduino functions) ---- */
+  function win(text,off){var len=text.length,s='';for(var i=0;i<16;i++){var k=off+i;s+=(k>=0&&k<len)?text[k]:' ';}lcd.setCursor(0,0);lcd.print(s);}
+  async function scrollText(t,from,id){for(var o=from;o<=t.length;o++){win(t,o);await wait(250,id);}}
+  var fx={
+    SCROLL:async function(t,id){await scrollText(t,-16,id);},
+    TYPE:async function(t,id){
+      if(t.length>16)return scrollText(t,-16,id);
+      clearRow(0);for(var i=0;i<t.length;i++){lcd.setCursor(i,0);lcd.print(t[i]);await wait(120,id);}await wait(1500,id);},
+    BLINK:async function(t,id){
+      if(t.length>16)return scrollText(t,-16,id);
+      for(var k=0;k<3;k++){win(t,0);await wait(400,id);clearRow(0);await wait(300,id);}
+      win(t,0);await wait(1500,id);},
+    SLIDE:async function(t,id){
+      for(var p=16;p>=0;p--){win(t,-p);await wait(80,id);}
+      for(var o=1;o<=t.length-16;o++){win(t,o);await wait(250,id);}
+      await wait(1500,id);},
+    BOUNCE:async function(t,id){
+      if(t.length>16)return scrollText(t,-16,id);
+      var m=16-t.length;
+      for(var r=0;r<2;r++){
+        for(var p=0;p<=m;p++){win(t,-p);await wait(150,id);}
+        for(var q=m-1;q>=0;q--){win(t,-q);await wait(150,id);}
+      }
+      win(t,-m);await wait(1000,id);}
+  };
+  function footer(i){
+    lcd.setCursor(0,1);
+    if(footerMode==='counter')lcd.print(('Notice '+(i+1)+'/'+notices.length+'                ').slice(0,16));
+    else lcd.print('Digital Notices ');
+  }
+  async function wipe(id){
+    for(var i=0;i<16;i++){lcd.setCursor(i,0);lcd.print(BLOCK);await wait(30,id);}
+    await wait(200,id);clearRow(0);await wait(300,id);
+  }
+  var nowEl=document.getElementById('now');
+  async function run(){
+    var id=++runId;
+    try{
+      lcd.clear();nowEl.textContent='booting';playing=-1;highlight();
+      lcd.setCursor(0,0);lcd.print('E-NOTICE BOARD');
+      for(var i=0;i<16;i++){lcd.setCursor(i,1);lcd.print(BLOCK);await wait(120,id);}
+      await wait(300,id);lcd.clear();
+      var i2=0;
+      while(true){
+        if(!notices.length){await wait(500,id);continue;}
+        var idx=i2%notices.length;i2++;
+        var n=notices[idx];playing=idx;highlight();
+        nowEl.textContent='notice '+(idx+1)+'/'+notices.length+' · '+n.effect.toLowerCase();
+        footer(idx);
+        await fx[n.effect](n.text,id);
+        await wipe(id);
+      }
+    }catch(e){if(e!=='stop')throw e;}
+  }
+
+  /* ---- editor ---- */
+  var listEl=document.getElementById('list');
+  function highlight(){var items=listEl.children;for(var i=0;i<items.length;i++)items[i].classList.toggle('active',i===playing);}
+  function hintFor(n){
+    return (n.text.length>16&&(n.effect==='TYPE'||n.effect==='BLINK'||n.effect==='BOUNCE'))
+      ?n.text.length+' characters. This effect needs 16 or fewer, so it scrolls instead.':'';
+  }
+  function build(){
+    listEl.innerHTML='';
+    notices.forEach(function(n,i){
+      var item=document.createElement('div');item.className='item';
+      var line=document.createElement('div');line.className='line';
+      var inp=document.createElement('input');inp.type='text';inp.id='t'+i;inp.maxLength=60;inp.value=n.text;inp.setAttribute('aria-label','Notice '+(i+1)+' text');
+      var sel=document.createElement('select');sel.id='e'+i;sel.setAttribute('aria-label','Effect for notice '+(i+1)+'');
+      EFFECTS.forEach(function(e){var o=document.createElement('option');o.value=e[0];o.textContent=e[1];if(e[0]===n.effect)o.selected=true;sel.appendChild(o);});
+      var del=document.createElement('button');del.textContent='Remove';del.id='d'+i;del.disabled=notices.length<=1;
+      var hint=document.createElement('p');hint.className='hint';hint.textContent=hintFor(n);hint.hidden=!hint.textContent;
+      inp.oninput=function(){n.text=inp.value;hint.textContent=hintFor(n);hint.hidden=!hint.textContent;code();};
+      sel.onchange=function(){n.effect=sel.value;hint.textContent=hintFor(n);hint.hidden=!hint.textContent;code();};
+      del.onclick=function(){notices.splice(i,1);build();code();};
+      line.appendChild(inp);line.appendChild(sel);line.appendChild(del);
+      item.appendChild(line);item.appendChild(hint);listEl.appendChild(item);
+    });
+    document.getElementById('add').disabled=notices.length>=8;
+    highlight();
+  }
+  document.getElementById('add').onclick=function(){notices.push({text:'NEW NOTICE',effect:'SCROLL'});build();code();};
+  document.getElementById('footer').onchange=function(){footerMode=this.value;code();};
+
+  /* ---- generated sketch ---- */
+  function cs(s){return s.replace(/\\/g,'\\\\').replace(/"/g,'\\"');}
+  var codeEl=document.getElementById('code');
+  function sketch(){
+    var arr=notices.map(function(n){return '  {"'+cs(n.text)+'", '+n.effect+'}';}).join(',\n');
+    return [
+'#include <Wire.h>',
+'#include <LiquidCrystal_I2C.h>',
+'',
+'// I2C address 0x27 (try 0x3F if the screen stays blank)',
+'LiquidCrystal_I2C lcd(0x27, 16, 2);',
+'',
+'enum Effect { SCROLL, TYPE, BLINK, SLIDE, BOUNCE };',
+'',
+'struct Notice {',
+'  const char* text;',
+'  Effect effect;',
+'};',
+'',
+'// Edit your notices here. TYPE, BLINK and BOUNCE need 16 characters or fewer.',
+'Notice notices[] = {',
+arr,
+'};',
+'const int NOTICE_COUNT = sizeof(notices) / sizeof(notices[0]);',
+'',
+'const bool SHOW_COUNTER = '+(footerMode==='counter'?'true':'false')+';  // false: "Digital Notices", true: "Notice 1/3"',
+'',
+'byte block[8] = {31, 31, 31, 31, 31, 31, 31, 31};  // solid block',
+'',
+'void clearRow(int row) {',
+'  lcd.setCursor(0, row);',
+'  lcd.print("                ");',
+'}',
+'',
+'// Shows 16 characters of text starting at offset on the top row.',
+'// Negative offsets push the text in from the right edge.',
+'void showWindow(const char* text, int offset) {',
+'  int len = strlen(text);',
+'  lcd.setCursor(0, 0);',
+'  for (int i = 0; i < 16; i++) {',
+'    int k = offset + i;',
+'    lcd.print((k >= 0 && k < len) ? text[k] : \' \');',
+'  }',
+'}',
+'',
+'void scrollText(const char* text, int from) {',
+'  int len = strlen(text);',
+'  for (int o = from; o <= len; o++) {',
+'    showWindow(text, o);',
+'    delay(250);',
+'  }',
+'}',
+'',
+'void typeText(const char* text) {',
+'  int len = strlen(text);',
+'  if (len > 16) { scrollText(text, -16); return; }',
+'  clearRow(0);',
+'  for (int i = 0; i < len; i++) {',
+'    lcd.setCursor(i, 0);',
+'    lcd.print(text[i]);',
+'    delay(120);',
+'  }',
+'  delay(1500);',
+'}',
+'',
+'void blinkText(const char* text) {',
+'  if (strlen(text) > 16) { scrollText(text, -16); return; }',
+'  for (int t = 0; t < 3; t++) {',
+'    showWindow(text, 0);',
+'    delay(400);',
+'    clearRow(0);',
+'    delay(300);',
+'  }',
+'  showWindow(text, 0);',
+'  delay(1500);',
+'}',
+'',
+'void slideText(const char* text) {',
+'  int len = strlen(text);',
+'  for (int pos = 16; pos >= 0; pos--) {',
+'    showWindow(text, -pos);',
+'    delay(80);',
+'  }',
+'  for (int o = 1; o <= len - 16; o++) {',
+'    showWindow(text, o);',
+'    delay(250);',
+'  }',
+'  delay(1500);',
+'}',
+'',
+'void bounceText(const char* text) {',
+'  int len = strlen(text);',
+'  if (len > 16) { scrollText(text, -16); return; }',
+'  int maxPos = 16 - len;',
+'  for (int r = 0; r < 2; r++) {',
+'    for (int p = 0; p <= maxPos; p++)     { showWindow(text, -p); delay(150); }',
+'    for (int p = maxPos - 1; p >= 0; p--) { showWindow(text, -p); delay(150); }',
+'  }',
+'  showWindow(text, -maxPos);',
+'  delay(1000);',
+'}',
+'',
+'// Fills the top row with blocks, then clears it',
+'void wipeRow() {',
+'  for (int i = 0; i < 16; i++) {',
+'    lcd.setCursor(i, 0);',
+'    lcd.write(byte(0));',
+'    delay(30);',
+'  }',
+'  delay(200);',
+'  clearRow(0);',
+'  delay(300);',
+'}',
+'',
+'void showFooter(int index) {',
+'  lcd.setCursor(0, 1);',
+'  if (SHOW_COUNTER) {',
+'    lcd.print("Notice ");',
+'    lcd.print(index + 1);',
+'    lcd.print("/");',
+'    lcd.print(NOTICE_COUNT);',
+'    lcd.print("      ");',
+'  } else {',
+'    lcd.print("Digital Notices ");',
+'  }',
+'}',
+'',
+'void setup() {',
+'  lcd.init();',
+'  lcd.backlight();',
+'  lcd.createChar(0, block);',
+'',
+'  lcd.setCursor(0, 0);',
+'  lcd.print("E-NOTICE BOARD");',
+'  for (int i = 0; i < 16; i++) {          // loading bar on the bottom row',
+'    lcd.setCursor(i, 1);',
+'    lcd.write(byte(0));',
+'    delay(120);',
+'  }',
+'  delay(300);',
+'  lcd.clear();',
+'}',
+'',
+'void loop() {',
+'  for (int i = 0; i < NOTICE_COUNT; i++) {',
+'    showFooter(i);',
+'    switch (notices[i].effect) {',
+'      case SCROLL: scrollText(notices[i].text, -16); break;',
+'      case TYPE:   typeText(notices[i].text);        break;',
+'      case BLINK:  blinkText(notices[i].text);       break;',
+'      case SLIDE:  slideText(notices[i].text);       break;',
+'      case BOUNCE: bounceText(notices[i].text);      break;',
+'    }',
+'    wipeRow();',
+'  }',
+'}',
+''].join('\n');
+  }
+  function code(){codeEl.textContent=sketch();}
+
+  /* ---- controls ---- */
+  document.getElementById('pause').onclick=function(){
+    paused=!paused;this.textContent=paused?'Resume':'Pause';
+  };
+  document.getElementById('restart').onclick=function(){
+    paused=false;document.getElementById('pause').textContent='Pause';run();
+  };
+  var sp=document.getElementById('speed');
+  sp.oninput=function(){speed=parseFloat(sp.value);document.getElementById('speedv').textContent=speed+'x';};
+  document.getElementById('copy').onclick=function(){
+    var b=this;
+    function sel(){var r=document.createRange();r.selectNodeContents(codeEl);var s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Selected, press copy';}
+    function ok(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy sketch';},1400);}
+    try{navigator.clipboard.writeText(sketch()).then(ok,sel);}catch(e){sel();}
+  };
+
+  build();code();run();
+})();
+</script>
+
+</body></html>
